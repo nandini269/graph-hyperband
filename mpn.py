@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from nnutils import *
 
+
 ELEM_LIST = range(100)
 HYBRID_LIST = [
     Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2,

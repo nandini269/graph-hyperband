@@ -16,12 +16,12 @@ def add_argument_group(name):
 
 # hyperband params
 hyper_arg = add_argument_group('Hyperband Params')
-hyper_arg.add_argument('--max_iter', type=int, default=50,                                                      #checkkkkkkk
+hyper_arg.add_argument('--max_iter', type=int, default=35,                                                      
                        help='Maximum # of iters allocated to a given config')
-hyper_arg.add_argument('--eta', type=int, default=3,
+hyper_arg.add_argument('--eta', type=int, default=3.1,
                        help='Proportion of configs discarded in each round of SH')
-hyper_arg.add_argument('--epoch_scale', type=str2bool, default=True,
-                       help='Compute `max_iter` in terms of epochs or mini-batch iters')
+# hyper_arg.add_argument('--epoch_scale', type=str2bool, default=True,
+#                        help='Compute `max_iter` in terms of epochs or mini-batch iters')          #checkkkkkkk
 
 # data params
 data_arg = add_argument_group('Data Params')
@@ -36,11 +36,7 @@ data_arg.add_argument('--shuffle', type=str2bool, default=False,
 
 # optim params
 train_arg = add_argument_group('Optim Params')
-train_arg.add_argument('--def_lr', type=float, default=1e-3,
-                       help='Default lr')
-train_arg.add_argument('--def_optim', type=str, default='adam',
-                       help='Default optimizer')
-train_arg.add_argument('--patience', type=int, default=5,
+train_arg.add_argument('--patience', type=int, default=7,
                        help='# of epochs to wait before early stopping')
 
 # misc params
