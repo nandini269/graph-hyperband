@@ -1,5 +1,7 @@
 # Hyperband for Graph Neural Networks
-This repository contains graph convolutional networks (or message passing network) for molecule property prediction. 
+This repository contains code for automatically optimizing hyper-parameters for graph convolutional networks (or message passing networks). It uses the hyperband algorithm. 
+
+The hyperband algorithm takes in two parameters - eta and max_iter. Eta is the proportion by which the algorithm carries out successive halving and max_iter is the maximum number of iterations a dataset can be trained on. Hyperband tries an optimized version of random search based on these two parameters.
 
 ## Training (Classification task)
 ```
