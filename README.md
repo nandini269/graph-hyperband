@@ -3,6 +3,14 @@ This repository contains code for automatically optimizing hyper-parameters for 
 
 The hyperband algorithm takes in two parameters - eta and max_iter. Eta is the proportion by which the algorithm carries out successive halving and max_iter is the maximum number of iterations a dataset can be trained on. Hyperband tries an optimized version of random search based on these two parameters.
 
+## Installation Requirements
+ * Python 3.6.5
+ * RDKit: `conda install -c rdkit rdkit`
+ * scikit-learn: `conda install scikit-learn`
+ * pytorch (GPU): Please follow the installation guide on pytorch.org
+ * numpy `conda install numpy`
+ * cuda-8.0 + cuDNN
+
 ## Training (Classification task)
 ```
 mkdir model
