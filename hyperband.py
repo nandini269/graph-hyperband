@@ -37,7 +37,7 @@ parser.add_option("-a", "--anneal", dest="anneal", default=-1)
 # parser.add_option("-b", "--batch", dest="batch_size", default=70)
 parser.add_option("-m", "--save_dir", dest="save_path", default='model')
 parser.add_option("-s", "--split", dest="split", default='random')
-parser.add_option("-r", "--shuffle", dest="shuffle", default=False)                         # change back
+parser.add_option("-r", "--shuffle", dest="shuffle", default=True)                         # change back
 
 opts,args = parser.parse_args()
 nan_file = open("record_nan.txt",'w')
@@ -229,8 +229,8 @@ class Hyperband(object):
 
         self.train, self.valid, self.test = create_split(data,1, False)
         if opts.split == "random":
-            self.train2, self.valid2, self.test2 = create_split(data,41, True)
-            self.train3, self.valid3, self.test3 = create_split(data,72, True)
+            self.train2, self.valid2, self.test2 = create_split(data,40, True)
+            self.train3, self.valid3, self.test3 = create_split(data,73, True)
 
         self.num_tasks = len(self.train[0][1])
         self.anneal_iter = int(opts.anneal)
@@ -272,7 +272,7 @@ class Hyperband(object):
             r = self.max_iter * self.eta ** (-s)
 
             # finite horizon SH with (n, r)
-            T = [self.get_random_config() for i in range(n)]
+            T = [self.get_random_config() for i in range(n)]                                                     # 3 checkpoint names assigned
 
             tqdm.write("s: {}".format(s))
 
@@ -293,10 +293,10 @@ class Hyperband(object):
             
                 with tqdm(total=len(T)) as pbar:
                     for t in T:
-                        model,val_loss = self.run_config(self.train, self.valid, t, r_i, s_num, False)          # the first model is saved
+                        model,val_loss = self.run_config(self.train, self.valid, t, r_i, s_num, 1)              # cross val number
                         if opts.split == "random":
-                            model2, val_loss2 = self.run_config(self.train2, self.valid2, t, r_i, s_num, True)
-                            model3, val_loss3 = self.run_config(self.train3, self.valid3, t, r_i, s_num, True)
+                            model2, val_loss2 = self.run_config(self.train2, self.valid2, t, r_i, s_num, 2)     # should be separate models
+                            model3, val_loss3 = self.run_config(self.train3, self.valid3, t, r_i, s_num, 3)
                             val_loss = (val_loss + val_loss2 + val_loss3)/3.0
                             models.append([model,model2,model3])
                         else:
@@ -317,7 +317,7 @@ class Hyperband(object):
                         tqdm.write("Left with: {}".format(len(T)))
 
             # the last iteration of successive halving has the best loss and model
-            s_num = s_num +1                                                               # index keeps track of which best model is
+            s_num = s_num +1                                                                # index keeps track of which best model is
                                                                                             # best overall
 
             if self.classify_or_regress =='classify':
@@ -387,11 +387,13 @@ class Hyperband(object):
 
         config["early_stopped"] = False
         config["val_loss"] = -1
-        config["ckpt_name"] = str(uuid.uuid4().hex)
+        config["ckpt_name_1"] = str(uuid.uuid4().hex)
+        config["ckpt_name_2"] = str(uuid.uuid4().hex)
+        config["ckpt_name_3"] = str(uuid.uuid4().hex)
         config["max_epoch"] = 1
         return config
 
-    def get_model_from_config(self, config_i):
+    def get_model_from_config(self, config_i, cross_val):
         """
         Gets model based on config and classify_or_regress
 
@@ -417,8 +419,14 @@ class Hyperband(object):
             #config_i[non_linear](),
             nn.Linear(config_i[hidden_size], self.num_tasks * 2)
             )
-            model.ckpt_name = config_i["ckpt_name"]
+            if cross_val == 1:
+                model.ckpt_name = config_i["ckpt_name_1"]
+            elif cross_val == 2:
+                model.ckpt_name = config_i["ckpt_name_2"]
+            else:
+                model.ckpt_name = config_i["ckpt_name_3"]
             model.early_stopped = False
+            model.val_loss = 0
             return 0, (nn.CrossEntropyLoss(ignore_index=-1).cuda()), (model.cuda())
         else:
             model = nn.Sequential(
@@ -427,8 +435,14 @@ class Hyperband(object):
             nn.ReLU(),
             nn.Linear(config_i[hidden_size], self.num_tasks)
             )
-            model.ckpt_name = config_i["ckpt_name"]
+            if cross_val == 1:
+                model.ckpt_name = config_i["ckpt_name_1"]
+            elif cross_val == 2:
+                model.ckpt_name = config_i["ckpt_name_2"]
+            else:
+                model.ckpt_name = config_i["ckpt_name_3"]
             model.early_stopped = False
+            model.val_loss = 1e5
             return 1e5, (nn.MSELoss().cuda()), (model.cuda())
 
 
@@ -463,37 +477,45 @@ class Hyperband(object):
 
 
         # get model from config
-        min_val_loss, loss_fn, model = self.get_model_from_config(config_i)
-        model = model                                                                       # ?
+        min_val_loss, loss_fn, model = self.get_model_from_config(config_i, cross_val)
+        model = model                                                                       
 
-        for param in model.parameters():                                                    # initialize parameters
+        for param in model.parameters():                                                    
             if param.dim() == 1:
-                nn.init.constant(param, 0)
+                nn.init.constant_(param, 0)                                                # initialize parameters
             else:
-                nn.init.xavier_normal(param)
+                nn.init.xavier_normal_(param)
 
         if config_i[optim] == 'adam':
             optimizer = Adam(model.parameters(), lr=1e-3)
         else:
-            optimizer = SGD(model.parameters(), lr=0.1)                                     # check learning rate!!!!!!!!!!
+            optimizer = SGD(model.parameters(), lr=0.1)                                   # check learning rate!!!!!
         scheduler = lr_scheduler.ExponentialLR(optimizer, 0.9)
         scheduler.step()
 
         #check for checkpoint
-        if cross_val == False:
-            try:
-                #import pdb; pdb.set_trace()
-                ckpt = self._load_checkpoint(model.ckpt_name)                               # picks the first of the models
-                model.load_state_dict(ckpt['state_dict'])
-                #print("it's used!!!!!!!!!!")
-            except FileNotFoundError:
-                pass
+        try:
+            #import pdb; pdb.set_trace()
+            # if cross_val == 1:
+            #     ckpt = self._load_checkpoint(model.ckpt_name1)                            # picks the first of the models WRONG
+            # elif cross_val == 2:
+            #     ckpt = self._load_checkpoint(model.ckpt_name2)
+            # else:
+            ckpt = self._load_checkpoint(model.ckpt_name)                            # need different checkpoint names for 3 splits per config
+            model.load_state_dict(ckpt['state_dict'])
+            # min_val_loss.load_state_dict(ckpt['min_val_loss'])
+            print("it's used!!!!!!!!!!")
+        except FileNotFoundError:
+            pass
 
         counter = 0
-        zero = create_var(torch.zeros(1))
+        zero = create_var(torch.zeros(1))                                                  # ensured of separate model 
 
-        if config_i["early_stopped"]== True:
-            return config_i["model"], config_i["val_loss"]                              # CHECK
+        # if config_i["early_stopped"]== True:
+        #     return config_i["model"], config_i["val_loss"]                                  
+
+        if model.early_stopped == True:
+            return model, config_i["val_loss"+str(cross_val)]                                                    # CHECK assign model.val_loss
 
         for epoch in range(num_iters):
             # train epoch
@@ -506,32 +528,45 @@ class Hyperband(object):
 
             if cur_loss > 100:
                 break
+            if cross_val == 2:
+                print("validation error2: %.4f" % cur_loss)
+            
+            # elif cross_val == 2:
+            #     print("validation error2: %.4f" % cur_loss)
+            # else:
+            #     print("validation error3: %.4f" % cur_loss)
 
-            #print("validation error: %.4f" % cur_loss)
             final_result.write("validation error: %.4f\n" % cur_loss)
 
-
             torch.save(model.state_dict(), opts.save_path + "/model.iter-" + str(epoch))
-            if cross_val==False:
-                config_i["max_epoch"] = config_i["max_epoch"] + 1
+            if cross_val==1:
+                config_i["max_epoch"] = config_i["max_epoch"] + 1                                # approximation
             if self.compare_loss(cur_loss, min_val_loss):
                 min_val_loss = cur_loss
-                torch.save(model.state_dict(), opts.save_path + "/model.best"+str(s_num))
-                config_i["model"] = model
-                config_i["val_loss"] = min_val_loss
+                torch.save(model.state_dict(), opts.save_path + "/model.best"+"__"+str(s_num))     #  ?????? check note space
+                config_i["model"+str(cross_val)] = model                                          # config unique to 3 models
+                config_i["val_loss"+str(cross_val)] = cur_loss
+
                 counter = 0
                 state = {
-                'state_dict': model.state_dict(),             # only gets here when it isn't early stopped
+                'state_dict': model.state_dict(),                                               # only gets here when it isn't early stopped
                 'min_val_loss': min_val_loss,
                 }
+                # if cross_val == 1:
+                #     self._save_checkpoint(state, model.ckpt_name1)
+                # elif cross_val == 2:
+                #     self._save_checkpoint(state, model.ckpt_name2)
+                # else:
+                #     self._save_checkpoint(state, model.ckpt_name3)
                 self._save_checkpoint(state, model.ckpt_name)
+
             else:
                 counter += 1
             if counter > self.patience:
                 tqdm.write("[!] early stopped!!")
                 model.early_stopped = True
-                config_i["early_stopped"] = True
-                return config_i["model"], min_val_loss
+                #config_i["early_stopped"] = True
+                return config_i["model"+str(cross_val)], min_val_loss
 
         return model, min_val_loss
 
@@ -562,7 +597,7 @@ class Hyperband(object):
 
 
     def train_epoch_classify(self, train, scheduler, loss_fn, optimizer, model, config_i):
-        mse,it = 0,0
+        #mse,it = 0,0
     #    print("learning rate: %.6f" % scheduler.get_lr()[0])
         for i in range(0, len(train), config_i["batch_size"]):
             batch = train[i:i + config_i["batch_size"]]
@@ -572,8 +607,8 @@ class Hyperband(object):
             model.zero_grad()                                                           # need to zero out gradients for each minibatch
             preds = model(mol_batch)
             loss = loss_fn(preds.view(-1,2), labels.view(-1))
-            mse += loss.detach()[0]
-            it += config_i["batch_size"]
+            #mse += loss.detach()[0]
+            #it += config_i["batch_size"]
             loss.backward()                                                             # calculate gradient with loss_fn!
             optimizer.step()
 
@@ -584,7 +619,7 @@ class Hyperband(object):
                 #   nan_file.write(config_i.__str__()+ " learning rate: "+ str(scheduler.get_lr()[0])+"\n")
 #                print("loss=%.4f,PNorm=%.2f,GNorm=%.2f" % (mse / it, pnorm, gnorm))
                 sys.stdout.flush()
-                mse,it = 0,0
+                #mse,it = 0,0
 
             if self.anneal_iter > 0 and i % anneal_iter == 0:
                 scheduler.step()
@@ -594,7 +629,7 @@ class Hyperband(object):
             scheduler.step()
 
     def train_epoch_regress(self, train, scheduler, loss_fn, optimizer, model, config_i):
-        mse,it = 0,0
+        #mse,it = 0,0
 #        print("learning rate: %.6f" % scheduler.get_lr()[0])
         for i in range(0, len(train), config_i["batch_size"]):
             batch = train[i:i + config_i["batch_size"]]
@@ -604,8 +639,8 @@ class Hyperband(object):
             model.zero_grad()                                                           # need to zero out gradients for each minibatch
             preds = model(mol_batch).view(-1)
             loss = loss_fn(preds, labels.view(-1))
-            mse += loss.data[0] * config_i["batch_size"]
-            it += config_i["batch_size"]                                                       # iteration?
+            #mse += loss.data[0] * config_i["batch_size"]
+            #it += config_i["batch_size"]                                                       # iteration?
             loss.backward()
             optimizer.step()
 
@@ -616,7 +651,7 @@ class Hyperband(object):
                 #   nan_file.write(config_i.__str__()+ " learning rate: "+ str(scheduler.get_lr()[0])+"\n")
 #                print("loss=%.4f,PNorm=%.2f,GNorm=%.2f" % (mse / it, pnorm, gnorm))
                 sys.stdout.flush()
-                mse,it = 0,0
+                #mse,it = 0,0
 
 
     def get_valid_loss(self, data, model, config_i):
