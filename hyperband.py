@@ -504,7 +504,7 @@ class Hyperband(object):
             ckpt = self._load_checkpoint(model.ckpt_name)                            # need different checkpoint names for 3 splits per config
             model.load_state_dict(ckpt['state_dict'])
             # min_val_loss.load_state_dict(ckpt['min_val_loss'])
-            print("it's used!!!!!!!!!!")
+            #print("it's used!!!!!!!!!!")
         except FileNotFoundError:
             pass
 
@@ -530,7 +530,7 @@ class Hyperband(object):
                 break
             if cross_val == 2:
                 print("validation error2: %.4f" % cur_loss)
-            
+
             # elif cross_val == 2:
             #     print("validation error2: %.4f" % cur_loss)
             # else:
@@ -607,7 +607,7 @@ class Hyperband(object):
             model.zero_grad()                                                           # need to zero out gradients for each minibatch
             preds = model(mol_batch)
             loss = loss_fn(preds.view(-1,2), labels.view(-1))
-            #mse += loss.detach()[0]
+            #mse += loss.detach()[0]                                                    # check
             #it += config_i["batch_size"]
             loss.backward()                                                             # calculate gradient with loss_fn!
             optimizer.step()
